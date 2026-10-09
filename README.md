@@ -28,14 +28,14 @@ Requires Android 8.0 or later.
 
 1. Download and install the APK, or install it with ADB:
 
-       adb install -r local-tv-beta.apk
+       adb install -r local-tv-release.apk
 
 2. Connect your phone and TV to the same local network.
 3. Open Connection and enter your TV's IP address.
 4. For the E32-D1, use port 9000 and enable legacy TLS compatibility.
 5. Enter an existing authentication token or use PIN pairing.
 
-The current APK is a beta signed with a testing key.
+The Android release is signed with the project's permanent signing key.
 
 Features include remote controls, a settings browser, and JSON viewing/copying. Network power-on is not implemented.
 
