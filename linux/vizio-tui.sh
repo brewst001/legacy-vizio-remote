@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Local SmartCast settings browser. Requires bash, curl, jq and dialog/whiptail.
+# Local SmartCast settings browser. Requires bash, curl, jq, openssl, timeout and dialog/whiptail.
 set -uo pipefail
 umask 077
-for dep in curl jq; do
+for dep in curl jq openssl timeout; do
     command -v "$dep" >/dev/null || { echo "Missing dependency: $dep" >&2; exit 1; }
 done
 if command -v dialog >/dev/null; then UI=dialog
@@ -25,6 +25,7 @@ CipherString = DEFAULT:@SECLEVEL=0
 EOF
 config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/vizio-tui
 config=$config_dir/connection.json
+trust_file=$config_dir/trusted-keys.json
 host=${VIZIO_HOST:-192.168.1.180}
 port=${VIZIO_PORT:-9000}
 token=${VIZIO_TOKEN:-}
@@ -35,16 +36,69 @@ if [[ -f $config ]]; then
 fi
 ui() { "$UI" --title 'Vizio TV Settings' "$@"; }
 ask() { ui "$@" 3>&1 1>&2 2>&3; }
-message() { ui --msgbox "$1" 20 78; }
+message() { ui --msgbox "$1" 20 78 >&2; }
 view() { printf '%s\n' "$1" > "$work/view.txt"; ui --textbox "$work/view.txt" 24 90; }
+# Trust is saved separately from the optional authentication-token config.
+# File state survives api() command substitutions and process restarts.
+read_trust() {
+    if [[ -f $trust_file ]]; then
+        jq -e 'type == "object" and all(.[]; type == "string" and test("^sha256//[A-Za-z0-9+/]{43}=$"))' "$trust_file" >/dev/null 2>&1 || {
+            message "Invalid trust file: $trust_file. Connection refused; no keys were replaced."; return 1;
+        }
+        cat "$trust_file"
+    else
+        printf '{}'
+    fi
+}
+write_trust() {
+    local data=$1 temp
+    mkdir -p "$config_dir" || return 1
+    temp=$(mktemp "$config_dir/.trusted-keys.XXXXXX") || return 1
+    if ! printf '%s\n' "$data" > "$temp" || ! chmod 600 "$temp" || ! mv -f "$temp" "$trust_file"; then
+        rm -f "$temp"; message 'Unable to save trusted key. Connection refused.'; return 1
+    fi
+}
+pin_for_tv() {
+    local endpoint="$host:$port" trusted pin cert
+    trusted=$(read_trust) || return 1
+    pin=$(jq -r --arg endpoint "$endpoint" '.[$endpoint] // empty' <<< "$trusted") || return 1
+    if [[ -n $pin ]]; then printf '%s' "$pin"; return; fi
+    local -a probe=(-connect "$endpoint" -servername "$host" -showcerts)
+    if [[ $port == 9000 ]]; then
+        probe+=(-legacy_server_connect -cipher 'DEFAULT:@SECLEVEL=0' -max_protocol TLSv1.2)
+    fi
+    # Certificate probe sends no HTTP request and no authentication token.
+    OPENSSL_CONF="$work/openssl.cnf" timeout 15 openssl s_client "${probe[@]}" \
+        </dev/null > "$work/certificate-probe" 2> "$work/error" || true
+    cert=$(openssl x509 -in "$work/certificate-probe" -pubkey -noout 2>/dev/null) || {
+        message "Could not read the TV certificate. No key was trusted.\n$(cat "$work/error")"; return 1;
+    }
+    pin=$(printf '%s\n' "$cert" | openssl pkey -pubin -outform DER 2>/dev/null | openssl dgst -sha256 -binary | openssl base64 -A) || return 1
+    [[ $pin =~ ^[A-Za-z0-9+/]{43}=$ ]] || { message 'Unable to calculate public-key fingerprint.'; return 1; }
+    pin="sha256//$pin"
+    ui --yesno "First connection to $endpoint.\n\nTrust this TV public key?\n$pin\n\nConfirm this is your TV on your trusted local network. Its key will be saved for future runs, even if you do not save the token.\n\nA changed key will be rejected. Shared manufacturer keys cannot uniquely identify a physical TV." 21 85 >&2 || return 1
+    trusted=$(jq --arg endpoint "$endpoint" --arg pin "$pin" '.[$endpoint]=$pin' <<< "$trusted") || return 1
+    write_trust "$trusted" || return 1
+    printf '%s' "$pin"
+}
+forget_tv_key() {
+    local trusted endpoint="$host:$port"
+    trusted=$(read_trust) || return 1
+    ui --yesno "Forget the trusted key for $endpoint?\n\nOnly do this after verifying a replacement TV or legitimate key change. The next request will ask for trust again." 12 80 || return
+    trusted=$(jq --arg endpoint "$endpoint" 'del(.[$endpoint])' <<< "$trusted") || return 1
+    write_trust "$trusted"
+}
 api() {
-    local method=$1 path=$2 body=${3:-} result
-    local -a args=(-skS --connect-timeout 5 --max-time 15 -H 'Content-Type: application/json' -X "$method")
+    local method=$1 path=$2 body=${3:-} result pin
+    [[ $host =~ ^[a-zA-Z0-9.-]+$ && $host != -* ]] || { message 'Invalid TV address.'; return 1; }
+    [[ $port =~ ^[0-9]+$ && ${#port} -le 5 ]] && ((10#$port > 0 && 10#$port <= 65535)) || { message 'Invalid port.'; return 1; }
+    pin=$(pin_for_tv) || return 1
+    local -a args=(-skS --pinnedpubkey "$pin" --connect-timeout 5 --max-time 15 -H 'Content-Type: application/json' -X "$method")
     [[ -z $token ]] || args+=(-H "AUTH: $token")
     [[ -z $body ]] || args+=(--data-binary "$body")
     if [[ $port == 9000 ]]; then args+=(--ciphers 'DEFAULT:@SECLEVEL=0' --tlsv1.0 --tls-max 1.2); fi
     if ! result=$(OPENSSL_CONF="$work/openssl.cnf" curl "${args[@]}" "https://$host:$port/$path" 2>"$work/error"); then
-        message "Connection failed. Keep the TV powered on.\n$(cat "$work/error")"; return 1
+        message "Connection failed. Keep the TV powered on. A public-key mismatch is blocked; no replacement key is trusted automatically.\n$(cat "$work/error")"; return 1
     fi
     if ! jq -e 'type == "object"' <<< "$result" >/dev/null 2>&1; then
         message "The TV did not return a JSON object.\n${result:0:1000}"; return 1
@@ -154,10 +208,11 @@ while :; do
         network 'Network settings' devices 'Inputs and devices' \
         channels 'Channels' closed_captions 'Closed captions' \
         mobile_devices 'Paired mobile devices' cast 'Cast settings' \
-        connection 'Change connection / Pair' quit 'Exit') || break
+        connection 'Change connection / Pair' trust 'Forget current TV trusted key' quit 'Exit') || break
     case $selection in
         quit) break ;;
         connection) connect || true ;;
+        trust) forget_tv_key || true ;;
         *) browse "menu_native/dynamic/tv_settings/$selection" "$selection" ;;
     esac
 done

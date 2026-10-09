@@ -41,11 +41,11 @@ Features include remote controls, a settings browser, and JSON viewing/copying. 
 
 ## Linux
 
-Requires Bash, curl, jq, and either dialog or whiptail.
+Requires Bash, curl, jq, OpenSSL, timeout (GNU coreutils), and either dialog or whiptail.
 
 Fedora/Nobara dependencies:
 
-    sudo dnf install curl jq dialog
+    sudo dnf install curl jq dialog openssl coreutils
 
 Run the downloaded script:
 
@@ -64,6 +64,12 @@ Each user must authenticate with their own TV. No TV credentials are included.
 Android stores the token encrypted using Android Keystore. The Linux script optionally saves its token in plaintext with owner-only permissions:
 
     ${XDG_CONFIG_HOME:-$HOME/.config}/vizio-tui/connection.json
+
+The Linux script asks you to approve the TV's public key on first connection, then checks that key before sending API requests or tokens. Trusted keys are saved separately from credentials, with owner-only permissions:
+
+    ${XDG_CONFIG_HOME:-$HOME/.config}/vizio-tui/trusted-keys.json
+
+A changed key is rejected. The menu can explicitly forget the current TV's key after a verified device or key change. First-use trust requires a trusted local network; manufacturer keys may be shared between TVs. Public-key pinning works with the existing TV certificate, without updating its issuer, hostname or expiry.
 
 Legacy TLS compatibility is scoped to the application. Settings availability depends on TV firmware. Eco Mode may make the network API unavailable while the TV is off.
 
