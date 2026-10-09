@@ -11,3 +11,5 @@ tests/classes/
 *.p12
 *.pfx
 connection.json
+
+/README.previous.md
