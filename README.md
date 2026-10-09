@@ -20,7 +20,7 @@ Script: linux/vizio-tui.sh
 
 Requires Bash, curl, jq, and either dialog or whiptail.
 
-Fedora/Nobara dependencies:
+Fedora dependencies:
 
     sudo dnf install curl jq dialog
 
