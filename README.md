@@ -38,9 +38,9 @@ Do not upload that connection file.
 
 ## Downloads and support
 
-Signed Android APKs will be available under GitHub Releases.
+Signed Android APKs will be available under GitHub Releases.(maybe)
 
-Report your TV model, firmware, operating system, and results through GitHub Issues. Remove tokens and Wi-Fi passwords from diagnostics.
+
 
 ---
 
