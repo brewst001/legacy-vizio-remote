@@ -1,6 +1,6 @@
 # Legacy Vizio Remote
 
-Android remote and Linux terminal settings browser for older Vizio SmartCast TVs.
+Android remote, Linux terminal settings browser, and experimental Windows PowerShell menu for older Vizio SmartCast TVs.
 
 Provides local control through the TV's API, including compatibility with the legacy TLS used by the E32-D1.
 
@@ -18,9 +18,9 @@ An E50-D1 or another model using a similar interface may work, but compatibility
 
 ## Downloads
 
-[Download Android APK or Linux script](https://github.com/brewst001/legacy-vizio-remote/releases)
+[Download Android APK, Linux script, or PowerShell package](https://github.com/brewst001/legacy-vizio-remote/releases)
 
-Android and Linux are published as separate releases.
+Android, Linux, and PowerShell are published as separate releases.
 
 ## Initial setup and the Link button
 
@@ -132,6 +132,20 @@ Or run it from the repository:
     VIZIO_HOST=192.168.1.221 bash linux/vizio-tui.sh
 
 Replace the example IP with your TV's address. Configure authentication through the script's prompts.
+
+## Windows PowerShell (prerelease)
+
+Requires Windows PowerShell 5.1 or PowerShell 7 and Java 17. Download and extract the complete PowerShell release ZIP; the script requires its bundled Java TLS helper and libraries.
+
+From the extracted folder:
+
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\vizio-tui.ps1 -TvAddress 192.168.1.221
+
+Replace the example IP with your TV's address. The Java helper avoids the Windows Schannel failure encountered with this TV and pins the approved TV certificate. Saved tokens use Windows DPAPI.
+
+[PowerShell setup and limitations](powershell/README.md)
+
+PowerShell/Linux integration tests passed against a TLS 1.0 simulator. Windows credential storage and this frontend's actual TV control remain unverified. Provided as-is without support.
 
 ## Credentials and limitations
 
