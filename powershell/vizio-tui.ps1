@@ -9,7 +9,33 @@ $script:ApiPort=$Port
 $script:Token=''
 $script:Legacy=$true
 $script:Pins=@{}
-$script:JavaExecutable=$JavaPath
+$script:JavaExecutable=$null
+$javaCommand=Get-Command -Name $JavaPath -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if($javaCommand){$script:JavaExecutable=$javaCommand.Source}
+elseif(Test-Path -LiteralPath $JavaPath -PathType Leaf){
+ $script:JavaExecutable=(Resolve-Path -LiteralPath $JavaPath).Path
+}
+elseif($JavaPath -eq 'java'){
+ if($env:JAVA_HOME){
+  $candidate=Join-Path $env:JAVA_HOME 'bin/java.exe'
+  if(Test-Path -LiteralPath $candidate){$script:JavaExecutable=$candidate}
+ }
+ if(-not $script:JavaExecutable -and $script:IsWindowsHost){
+  $roots=@(
+   (Join-Path $env:ProgramFiles 'Eclipse Adoptium'),
+   (Join-Path $env:ProgramFiles 'Java'),
+   (Join-Path $env:ProgramFiles 'Microsoft')
+  )
+  foreach($root in $roots){
+   $candidate=Get-ChildItem -LiteralPath $root -Filter java.exe -Recurse -ErrorAction SilentlyContinue |
+    Select-Object -First 1 -ExpandProperty FullName
+   if($candidate){$script:JavaExecutable=$candidate;break}
+  }
+ }
+}
+if(-not $script:JavaExecutable){
+ throw 'Java was not found. Install Java 17, or supply -JavaPath with the full path to java.exe.'
+}
 $separator=[IO.Path]::PathSeparator
 $dependencyDir=Join-Path $PSScriptRoot 'lib'
 if (-not (Test-Path (Join-Path $dependencyDir 'bcprov-jdk18on-1.86.jar'))) { $dependencyDir=Join-Path (Split-Path $PSScriptRoot) 'app/libs' }
@@ -31,7 +57,12 @@ function Save-PrivateJson([string]$Path,$Object) {
   $acl.SetAccessRuleProtection($true,$false)
   $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
   $rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,'FullControl','ContainerInherit, ObjectInherit','None','Allow')
-  $acl.AddAccessRule($rule);Set-Acl -LiteralPath $script:ConfigDir -AclObject $acl
+  $acl.AddAccessRule($rule);$directory=New-Object IO.DirectoryInfo($script:ConfigDir)
+  if($PSVersionTable.PSEdition -eq 'Desktop'){
+   $directory.SetAccessControl($acl)
+  }else{
+   [IO.FileSystemAclExtensions]::SetAccessControl($directory,$acl)
+  }
  }
  $temp=Join-Path $script:ConfigDir ([Guid]::NewGuid().ToString()+'.tmp')
  try{

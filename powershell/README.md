@@ -31,7 +31,7 @@ There is no telemetry, cloud account or bundled TV credential.
 
 PowerShell parser and runtime integration tested on Linux with PowerShell 7 against a TLS 1.0 simulator: certificate approval, declined trust, saved pin reuse, changed-certificate rejection before HTTP/token transmission, private-address restrictions, and a numeric setting update with a fresh hash.
 
-Windows PowerShell 5.1, DPAPI storage, Windows folder ACLs, and actual TV control using this frontend have NOT been tested. This is a prerelease, not a claim of verified Windows or E50-D1 compatibility. The shared transport already works in the Android E32-D1 app.
+User testing on Windows with an E32-D1 confirmed volume control and successful reopening after fixing Java discovery and directory permissions. Automatic Java discovery and other settings still need Windows verification. DPAPI token persistence and Windows PowerShell 7 remain unverified. E50-D1 compatibility is unverified.
 
 ## Rebuild helper from the repository
 
